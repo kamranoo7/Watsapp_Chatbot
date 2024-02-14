@@ -116,6 +116,13 @@ logging.basicConfig(level=logging.INFO)
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     logging.info("Received a request")
+    if request.method == 'GET':
+        verify_token = request.args.get('hub.verify_token')
+        challenge = request.args.get('hub.challenge')
+        if verify_token == '123456':
+            return challenge
+        else:
+            return 'Verification token mismatch', 403
     if request.method == 'POST':
         incoming_message = request.json
         logging.info(f"Incoming message: {incoming_message}")
@@ -144,7 +151,7 @@ def webhook():
 def send_whatsapp_message(to, message):
     url = "https://graph.facebook.com/v18.0/233232389874980/messages"
     headers = {
-        'Authorization': 'Bearer EAAQCw46knDUBO42Usu19mux9ZAa7soioMmK42RFMgtvQGWG4NpkaE1VyJ0yIkZAcKqRksWC8NmZB5ZB1iOTS0BQOyt1k8BW4F9GFJYxWiEzWC3UrC1SaAzRXngttCXDDdHvwcUe3GsBqkn9ACQ6Un65L60cHh5ZCNwXAhRWwBQOzQNb1SNmBaX4mSwVa53PvNuP1w78ZB5dJunOtcsAQUZD',  # Replace YOUR_ACCESS_TOKEN with your actual access token
+        'Authorization': 'Bearer EAAQCw46knDUBOyONs7rMVA3YQhUU8AsPrKoEQIZBF1Hy3OtwsZAJuwgS3JJsYw4qbQFVhVVjBbtxH7ucS4C6iYUoqkmqlztvbHIFZA9Vv1SrZAPjRAMvWPNFpqsdLYReSxDTCcOtuFyteR2YotnMITt7ZCs0wA6ViV1UNbOW8hoMHJsTeP7OOASnplwy7nsRSPiATZA3XlRiy6zsR0LBwZD',  # Replace YOUR_ACCESS_TOKEN with your actual access token
         'Content-Type': 'application/json'
     }
     data = {
