@@ -1,87 +1,150 @@
 from flask import Flask, request, jsonify
 import requests
-import fitz  # PyMuPDF
+import traceback
+import weaviate
+from datetime import datetime
+import time
 import openai
 
 app = Flask(__name__)
+# name="Capria1"
+# cname="Capria1"
+# Assuming your API keys and tokens are now stored securely
+import openai
 
-openai.api_key = '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'
+# Assuming your API keys are stored securely and are now being correctly retrieved
+key = "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"
 
-# Load and extract text from PDF
-def load_pdf_text(pdf_path):
-    doc = fitz.open(pdf_path)
-    text = ""
-    for page in doc:
-        text += page.get_text()
-    return text
+# Set the API key
+openai.api_key = key
 
-pdf_text = load_pdf_text("./gus_live_usage - Sheet1.pdf")
+# Now you can use the openai module to make API calls
 
-user_modes = {}  # Tracks whether the user is in GPT mode or PDF mode
 
-def search_in_pdf(query, pdf_text, max_length=200):
-    start = pdf_text.lower().find(query.lower())
-    if start == -1:
-        return "Sorry, I couldn't find information on that topic."
-    end = start + max_length
-    return pdf_text[start:end] + "..."
+lm_client = openai.OpenAI(api_key=key)
+whatsapp_token = "YOUR_WHATSAPP_TOKEN"
+weaviate_api_key = "37ESFfEpfIn6Csis9by0Cdq9WQl91AEP9kpY"
+import weaviate
 
-import traceback
+weaviate_url = "https://murrkfdqk2cac91dqye6w.c0.us-west1.gcp.weaviate.cloud"
 
-def query_gpt(prompt):
+
+# Correct initialization for Weaviate client with API key
+# Note: The exact method will depend on the version of the Weaviate client library and the authentication mechanism it supports.
+
+# If your version of the Weaviate client supports direct API key usage, it would typically look something like this:
+db_client = weaviate.Client(
+    url="https://murrkfdqk2cac91dqye6w.c0.us-west1.gcp.weaviate.cloud",
+    auth_client_secret=weaviate.AuthApiKey(api_key="37ESFfEpfIn6Csis9by0Cdq9WQl91AEP9kpY"),
+    additional_headers={"X-OpenAI-Api-Key": key}
+)
+
+user_nodes={}
+
+def qdb(query, db_client, name, cname):
+    context = None
+    metadata = []
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": prompt}],
+        limit = 5
+        res = (
+            db_client.query.get(name, ["text", "metadata"])
+            .with_near_text({"concepts": query})
+            .with_limit(limit)
+            .do()
         )
-        return response.choices[0].message['content'].strip()
-    except openai.error.OpenAIError as e:
-        print(f"OpenAI API error: {e}")
+        context = ""
+        metadata = []
+        chunk_id = 0
+        for i in range(limit):
+            context += "Chunk ID: " + str(chunk_id) + "\n"
+            context += res["data"]["Get"][cname][i]["text"] + "\n\n"
+            print("context111111111111111111111111111111111111",context)
+            metadata.append(res["data"]["Get"][cname][i]["metadata"])
+            chunk_id += 1
     except Exception as e:
-        print(f"Unexpected error: {e}")
-        traceback.print_exc()
-    return "I'm having trouble processing your request right now."
+        print("Exception in DB, dude.")
+        print(e)
+        time.sleep(3)
+        context, metadata = qdb(query, db_client, name, cname)
+        print(context,"contextxtttttttt")
+    return context, metadata
 
+
+
+def generate_chat_response(user_question, context):
+    # Construct the system and user messages
+    print("context222222222222",context)
+    system_message = "Given below is a piece of text about Capria. You will be asked questions about it. Please do answer only using the information given below. take your time, and read it carefully and thoroughly. Do not miss anything. The information might be in a non-contiguous unstructured manner. Do not use our own information. Think carefully and provide detailed and long answers. The person asking the question does not know about the context, please answer directly. I am retrieving the below chunks from a vector DB. Before each chunk, I am providing the modification date. Whenever you are confused, pick the information from the chunk which contains the more recent modification date. There will be a lot of conflicting information. Use the modification date to pick recent information. The current date is: October 28th, 2023. If you are unable to generate a response from the context, return 'Unanswerable question':   \n" + context
+    user_message = f"Question: {user_question} Additional context and instructions for the LLM"
+    # print("context222222222222",context)
+    # Prepare the messages payload for the LLM
+    msg = [
+        {'role': 'system', 'content': system_message},
+        {'role': 'user', 'content': user_message}
+    ]
+    
+
+
+    print(msg,"the message is here ")
+    # Function to call the OpenAI API
+    def call_api():
+          # Assuming lm_client is the OpenAI client initialized globally
+        response = lm_client.chat.completions.create(
+            model="gpt-4",
+            messages=msg,
+            max_tokens=1000,
+            temperature=0.0
+        )
+        # Extract the LLM's response
+        return response.choices[0].message.content
+
+    # Call the API and get the response
+    try:
+        reply = call_api()
+        print("LLM Response:", reply)
+        return reply
+    except Exception as e:
+        print(f"Error calling LLM: {e}")
+        return None
+
+# This function takes the user's question and any relevant context, then communicates with the LLM to get a response. It abstracts away details like error handling and thread management for simplicity.
+
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
+    logging.info("Received a request")
     if request.method == 'POST':
         incoming_message = request.json
+        logging.info(f"Incoming message: {incoming_message}")
         try:
-            sender_number = incoming_message['entry'][0]['changes'][0]['value']['messages'][0]['from']
-            message_text = incoming_message['entry'][0]['changes'][0]['value']['messages'][0]['text']['body'].lower()
-
-            # Check for mode toggle commands
-            if message_text == "start gpt":
-                user_modes[sender_number] = "GPT"
-                response_text = "GPT mode activated. You can now ask me anything."
-            elif message_text == "end gpt":
-                user_modes[sender_number] = "PDF"
-                response_text = "GPT mode deactivated."
-            elif user_modes.get(sender_number) == "GPT":
-                # Respond using GPT-3.5-turbo
-                response_text = query_gpt(message_text)
+            # Check if 'messages' key exists
+            if 'messages' in incoming_message['entry'][0]['changes'][0]['value']:
+                sender_number = incoming_message['entry'][0]['changes'][0]['value']['messages'][0]['from']
+                message_text = incoming_message['entry'][0]['changes'][0]['value']['messages'][0]['text']['body'].lower()
+                context = qdb(message_text, db_client, "Capria1", "Capria1")
+                print("contextttttttttttttttttttttttttttttttttttttt",context)
+                response_text = generate_chat_response(message_text, context[0])
+                print("Response Text...............................",response_text)
+                send_whatsapp_message(sender_number, response_text)
             else:
-                # Default to PDF search for responses
-                if message_text in ['hi', 'hey', 'hello']:
-                    response_text = "Hey, welcome to Capria. How may I help you?"
-                else:
-                    response_text = search_in_pdf(message_text, pdf_text)
-
-            send_whatsapp_message(to=sender_number, message=response_text)
+                print("No 'messages' key in the incoming message.")
         except KeyError as e:
             print(f"Error parsing incoming message: {e}")
+        except Exception as e:
+            print(f"Unhandled exception: {e}")
+            # Handle the case where sender_number is not defined due to the exception
+            # send_whatsapp_message(sender_number, "Sorry, an error occurred while processing your request.")
+            
         return jsonify(success=True), 200
-
-# send_whatsapp_message function remains the same
-
-
 
 
 def send_whatsapp_message(to, message):
     url = "https://graph.facebook.com/v18.0/233232389874980/messages"
     headers = {
-        'Authorization': 'Bearer EAAQCw46knDUBOxBNQJ4TmI9la4omy2qUAnsyZChcv8wPXx2aCFVavGgUiX7HHzZAaf9UqPSBZC2ufX0doZBFJEAMR3XfqgRBGWezsidStahMtQvp9amUvZAsu5dpcL2CH0pjmcogFSLrgu8grEkpxBWoD5Qv0uc3jHqeJZBAhxYZAHWWrJTtrMsijrQ1j0Q7qXItODDJ1DaIF4L1a4IrSMZD',  # Replace YOUR_ACCESS_TOKEN with your actual access token
+        'Authorization': 'Bearer EAAQCw46knDUBO42Usu19mux9ZAa7soioMmK42RFMgtvQGWG4NpkaE1VyJ0yIkZAcKqRksWC8NmZB5ZB1iOTS0BQOyt1k8BW4F9GFJYxWiEzWC3UrC1SaAzRXngttCXDDdHvwcUe3GsBqkn9ACQ6Un65L60cHh5ZCNwXAhRWwBQOzQNb1SNmBaX4mSwVa53PvNuP1w78ZB5dJunOtcsAQUZD',  # Replace YOUR_ACCESS_TOKEN with your actual access token
         'Content-Type': 'application/json'
     }
     data = {
