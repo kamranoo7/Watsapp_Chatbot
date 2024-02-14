@@ -4,9 +4,14 @@ import traceback
 import weaviate
 from datetime import datetime
 import time
+from flask_cors import CORS
 import openai
+from dotenv import load_dotenv
+load_dotenv()
+
 
 app = Flask(__name__)
+CORS(app)
 # name="Capria1"
 # cname="Capria1"
 # Assuming your API keys and tokens are now stored securely
@@ -17,16 +22,22 @@ key = "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"
 
 # Set the API key
 openai.api_key = key
+import os
+
+key = os.getenv('KEY')
+whatsapp_token = os.getenv('WHATSAPP_TOKEN')
+weaviate_api_key = os.getenv('WEAVIATE_API_KEY')
+weaviate_url = os.getenv('WEAVIATE_URL')
 
 # Now you can use the openai module to make API calls
 
 
 lm_client = openai.OpenAI(api_key=key)
 whatsapp_token = "YOUR_WHATSAPP_TOKEN"
-weaviate_api_key = "37ESFfEpfIn6Csis9by0Cdq9WQl91AEP9kpY"
+
 import weaviate
 
-weaviate_url = "https://murrkfdqk2cac91dqye6w.c0.us-west1.gcp.weaviate.cloud"
+
 
 
 # Correct initialization for Weaviate client with API key
