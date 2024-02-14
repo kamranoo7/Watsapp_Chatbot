@@ -1,5 +1,5 @@
 runtime: python39  # Use the Python version matching your environment
-entrypoint: gunicorn -b :$PORT app:app  # Adjust "app:app" if your Flask app is in a different module
+entrypoint: gunicorn -b :$PORT main:app  # Adjust "app:app" if your Flask app is in a different module
 
 env_variables:
   FLASK_ENV: 'production'
